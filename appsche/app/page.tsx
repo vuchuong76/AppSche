@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import Dashboard from '@/components/Dashboard';
 import ScheduleModal from '@/components/ScheduleModal';
 import TaskModal from '@/components/TaskModal';
 import { Schedule, Task } from '@/types';
 import { getTodayString } from '@/lib/utils';
-import { getAuthHeader } from '@/lib/auth';
+import { getAuthHeader, isAuthenticated } from '@/lib/auth';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,12 +22,17 @@ export default function DashboardPage() {
   const fetchSchedules = async () => {
     try {
       const today = getTodayString();
+      console.log('📅 [Dashboard] Fetching schedules for today:', today);
       const response = await fetch(`/api/schedules?date=${today}`, {
         headers: getAuthHeader() as HeadersInit,
       });
       const data = await response.json();
+      console.log('📊 [Dashboard] API response:', data);
       if (data.success) {
+        console.log(`✅ [Dashboard] Loaded ${data.data.length} schedules for ${today}`);
         setSchedules(data.data);
+      } else {
+        console.error('❌ [Dashboard] Fetch failed:', data);
       }
     } catch (error) {
       console.error('Failed to fetch schedules:', error);
@@ -48,12 +55,19 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    // Check authentication on mount
+    if (!isAuthenticated()) {
+      console.log('⚠️ [Dashboard] Not authenticated, redirecting to login');
+      router.push('/login');
+      return;
+    }
+
     const loadData = async () => {
       await Promise.all([fetchSchedules(), fetchTasks()]);
       setLoading(false);
     };
     loadData();
-  }, []);
+  }, [router]);
 
   const handleAddSchedule = async (schedule: any) => {
     try {

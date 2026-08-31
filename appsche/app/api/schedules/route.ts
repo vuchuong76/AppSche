@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
   try {
     const userId = authorizeRequest(request);
     if (!userId) {
+      console.log('❌ [API] Unauthorized request');
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
@@ -36,7 +37,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date') || undefined;
 
+    console.log('📥 [API GET] Fetching schedules:', { userId, date });
+
     const schedules = await getSchedules(userId, date);
+
+    console.log(`✅ [API GET] Found ${schedules.length} schedules`);
 
     return NextResponse.json({
       success: true,

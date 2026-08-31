@@ -33,20 +33,46 @@ const TASKS_TABLE = process.env.NEXT_PUBLIC_AWS_TASKS_TABLE!;
 export async function getSchedules(userId: string, date?: string): Promise<Schedule[]> {
   let keyCondition = 'userId = :userId';
   const expressionValues: any = { ':userId': userId };
+  const expressionNames: any = {};
 
   if (date) {
-    keyCondition += ' AND begins_with(dateTime, :date)';
+    // dateTime is a reserved keyword, must use ExpressionAttributeNames
+    keyCondition += ' AND begins_with(#dateTime, :date)';
     expressionValues[':date'] = date;
+    expressionNames['#dateTime'] = 'dateTime';
   }
 
-  const command = new QueryCommand({
+  console.log('🔍 [DynamoDB] Query schedules:', {
+    table: SCHEDULES_TABLE,
+    userId,
+    date: date || 'ALL',
+    keyCondition,
+    expressionValues,
+    expressionNames
+  });
+
+  const commandParams: any = {
     TableName: SCHEDULES_TABLE,
     KeyConditionExpression: keyCondition,
     ExpressionAttributeValues: expressionValues,
-  });
+  };
 
-  const response = await docClient.send(command);
-  return (response.Items as Schedule[]) || [];
+  // Only add ExpressionAttributeNames if date filter is used
+  if (date) {
+    commandParams.ExpressionAttributeNames = expressionNames;
+  }
+
+  const command = new QueryCommand(commandParams);
+
+  try {
+    const response = await docClient.send(command);
+    const items = (response.Items as Schedule[]) || [];
+    console.log(`✅ [DynamoDB] Found ${items.length} schedules`);
+    return items;
+  } catch (error) {
+    console.error('❌ [DynamoDB] Query failed:', error);
+    throw error;
+  }
 }
 
 /**
