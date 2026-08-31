@@ -1,0 +1,230 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Personal Scheduler App - Cognito + DynamoDB + IAM Stack'
+
+Parameters:
+  AppName:
+    Type: String
+    Default: personal-scheduler
+    Description: Application name
+  VercelDomain:
+    Type: String
+    Default: 'localhost:3000'
+    Description: 'Vercel domain for callback URL (update after Vercel deploy)'
+
+Resources:
+  # ========================================
+  # COGNITO USER POOL
+  # ========================================
+  
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AppName}-pool'
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: false
+          RequireLowercase: false
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${AppName}-client'
+      UserPoolId: !Ref CognitoUserPool
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - phone
+        - email
+        - openid
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      CallbackURLs:
+        - !Sub 'http://${VercelDomain}/callback'
+        - !Sub 'https://${VercelDomain}/callback'
+      LogoutURLs:
+        - !Sub 'http://${VercelDomain}/'
+        - !Sub 'https://${VercelDomain}/'
+      GenerateSecret: false
+      RefreshTokenValidity: 30
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  # ========================================
+  # DYNAMODB TABLES
+  # ========================================
+
+  SchedulesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AppName}-schedules'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: dateTime
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: dateTime
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: App
+          Value: !Ref AppName
+
+  TasksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AppName}-tasks'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: taskId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: taskId
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: App
+          Value: !Ref AppName
+
+  # ========================================
+  # IAM USER & CREDENTIALS
+  # ========================================
+
+  AppIAMUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Sub '${AppName}-app-user'
+
+  AppAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref AppIAMUser
+
+  DynamoDBPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${AppName}-dynamodb-policy'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:BatchGetItem
+              - dynamodb:BatchWriteItem
+            Resource:
+              - !GetAtt SchedulesTable.Arn
+              - !GetAtt TasksTable.Arn
+              - !Sub '${SchedulesTable.Arn}/index/*'
+              - !Sub '${TasksTable.Arn}/index/*'
+      Users:
+        - !Ref AppIAMUser
+
+  CognitoPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${AppName}-cognito-policy'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - cognito-idp:AdminGetUser
+              - cognito-idp:AdminUpdateUserAttributes
+              - cognito-idp:GetUser
+              - cognito-idp:UpdateUserAttributes
+            Resource:
+              - !GetAtt CognitoUserPool.Arn
+      Users:
+        - !Ref AppIAMUser
+
+Outputs:
+  CognitoUserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref CognitoUserPool
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolId'
+
+  CognitoUserPoolArn:
+    Description: Cognito User Pool ARN
+    Value: !GetAtt CognitoUserPool.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolArn'
+
+  CognitoClientId:
+    Description: Cognito Client ID
+    Value: !Ref CognitoUserPoolClient
+    Export:
+      Name: !Sub '${AWS::StackName}-ClientId'
+
+  CognitoRegion:
+    Description: AWS Region for Cognito
+    Value: !Ref AWS::Region
+    Export:
+      Name: !Sub '${AWS::StackName}-Region'
+
+  SchedulesTableName:
+    Description: DynamoDB Schedules Table Name
+    Value: !Ref SchedulesTable
+    Export:
+      Name: !Sub '${AWS::StackName}-SchedulesTable'
+
+  TasksTableName:
+    Description: DynamoDB Tasks Table Name
+    Value: !Ref TasksTable
+    Export:
+      Name: !Sub '${AWS::StackName}-TasksTable'
+
+  IAMAccessKeyId:
+    Description: IAM Access Key ID (for .env.local)
+    Value: !Ref AppAccessKey
+
+  IAMSecretAccessKey:
+    Description: IAM Secret Access Key (for .env.local)
+    Value: !GetAtt AppAccessKey.SecretAccessKey
+
+  EnvFileContent:
+    Description: 'Content for .env.local file'
+    Value: !Sub |
+      NEXT_PUBLIC_AWS_REGION=${AWS::Region}
+      NEXT_PUBLIC_AWS_COGNITO_USER_POOL_ID=${CognitoUserPool}
+      NEXT_PUBLIC_AWS_COGNITO_CLIENT_ID=${CognitoUserPoolClient}
+      AWS_ACCESS_KEY_ID=${AppAccessKey}
+      AWS_SECRET_ACCESS_KEY=${AppAccessKey.SecretAccessKey}
+      NEXT_PUBLIC_AWS_SCHEDULES_TABLE=${SchedulesTable}
+      NEXT_PUBLIC_AWS_TASKS_TABLE=${TasksTable}
