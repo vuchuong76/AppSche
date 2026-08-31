@@ -8,9 +8,11 @@ import BulkImportModal from '@/components/BulkImportModal';
 import TemplateModal from '@/components/TemplateModal';
 import Toast from '@/components/Toast';
 import { Schedule } from '@/types';
-import { getAuthHeader } from '@/lib/auth';
+import { getAuthHeader, isAuthenticated } from '@/lib/auth';
+import { useRouter } from 'next/navigation';
 
 export default function CalendarPage() {
+  const router = useRouter();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -23,12 +25,17 @@ export default function CalendarPage() {
   // Fetch all schedules
   const fetchSchedules = async () => {
     try {
+      console.log('🔄 Fetching schedules...');
       const response = await fetch('/api/schedules', {
         headers: getAuthHeader() as HeadersInit,
       });
       const data = await response.json();
+      console.log('📊 Fetched schedules:', data);
       if (data.success) {
+        console.log(`✅ Loaded ${data.data.length} schedules from DB`);
         setSchedules(data.data);
+      } else {
+        console.error('❌ Fetch failed:', data);
       }
     } catch (error) {
       console.error('Failed to fetch schedules:', error);
@@ -38,8 +45,13 @@ export default function CalendarPage() {
   };
 
   useEffect(() => {
+    // Check authentication on mount
+    if (!isAuthenticated()) {
+      router.push('/login');
+      return;
+    }
     fetchSchedules();
-  }, []);
+  }, [router]);
 
   const handleDateClick = (date: string) => {
     setSelectedDate(date);
@@ -67,11 +79,27 @@ export default function CalendarPage() {
   };
 
   const handleBulkImport = async (schedules: any[]) => {
+    // Check authentication first
+    if (!isAuthenticated()) {
+      setToast({
+        message: '🔒 Session expired. Please login again.',
+        type: 'error',
+      });
+      setTimeout(() => {
+        router.push('/login');
+      }, 2000);
+      return;
+    }
+
     setImporting(true);
+    console.log('🚀 Starting bulk import with schedules:', schedules);
+    console.log('🔐 Auth header:', getAuthHeader());
+
     try {
       // Import all schedules
-      const promises = schedules.map(schedule =>
-        fetch('/api/schedules', {
+      const promises = schedules.map(schedule => {
+        console.log('📤 Sending schedule:', schedule);
+        return fetch('/api/schedules', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -82,6 +110,7 @@ export default function CalendarPage() {
       );
 
       const results = await Promise.all(promises);
+      console.log('📥 Import results:', results.map(r => ({ status: r.status, ok: r.ok })));
 
       // Check if all succeeded
       const allSuccess = results.every(r => r.ok);
@@ -93,8 +122,22 @@ export default function CalendarPage() {
         });
       } else {
         const successCount = results.filter(r => r.ok).length;
+
+        // Get error details from first failed request
+        const failedResult = results.find(r => !r.ok);
+        let errorDetail = '';
+        if (failedResult) {
+          try {
+            const errorData = await failedResult.json();
+            errorDetail = errorData.error || errorData.message || '';
+            console.error('Import error details:', errorData);
+          } catch (e) {
+            errorDetail = `Status ${failedResult.status}`;
+          }
+        }
+
         setToast({
-          message: `⚠️ Imported ${successCount}/${schedules.length} schedules`,
+          message: `⚠️ Imported ${successCount}/${schedules.length} schedules. Error: ${errorDetail}`,
           type: 'error',
         });
       }
@@ -104,7 +147,7 @@ export default function CalendarPage() {
     } catch (error) {
       console.error('Failed to bulk import:', error);
       setToast({
-        message: '❌ Failed to import schedules. Please try again.',
+        message: `❌ Failed to import: ${error instanceof Error ? error.message : 'Unknown error'}`,
         type: 'error',
       });
     } finally {
@@ -113,6 +156,18 @@ export default function CalendarPage() {
   };
 
   const handleApplyTemplate = async (schedules: any[]) => {
+    // Check authentication first
+    if (!isAuthenticated()) {
+      setToast({
+        message: '🔒 Session expired. Please login again.',
+        type: 'error',
+      });
+      setTimeout(() => {
+        router.push('/login');
+      }, 2000);
+      return;
+    }
+
     setImporting(true);
     try {
       const promises = schedules.map(schedule =>

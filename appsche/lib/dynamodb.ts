@@ -67,13 +67,26 @@ export async function addSchedule(
     createdAt: Date.now(),
   };
 
+  console.log('📝 [DynamoDB] Attempting to save schedule:', {
+    table: SCHEDULES_TABLE,
+    userId,
+    dateTime,
+    title: newSchedule.title,
+  });
+
   const command = new PutCommand({
     TableName: SCHEDULES_TABLE,
     Item: newSchedule,
   });
 
-  await docClient.send(command);
-  return newSchedule;
+  try {
+    const result = await docClient.send(command);
+    console.log('✅ [DynamoDB] Schedule saved successfully:', result);
+    return newSchedule;
+  } catch (error) {
+    console.error('❌ [DynamoDB] Failed to save schedule:', error);
+    throw error;
+  }
 }
 
 /**
