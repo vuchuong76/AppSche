@@ -6,6 +6,7 @@ import Calendar from '@/components/Calendar';
 import ScheduleModal from '@/components/ScheduleModal';
 import BulkImportModal from '@/components/BulkImportModal';
 import TemplateModal from '@/components/TemplateModal';
+import Toast from '@/components/Toast';
 import { Schedule } from '@/types';
 import { getAuthHeader } from '@/lib/auth';
 
@@ -16,6 +17,8 @@ export default function CalendarPage() {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [importing, setImporting] = useState(false);
 
   // Fetch all schedules
   const fetchSchedules = async () => {
@@ -64,6 +67,7 @@ export default function CalendarPage() {
   };
 
   const handleBulkImport = async (schedules: any[]) => {
+    setImporting(true);
     try {
       // Import all schedules
       const promises = schedules.map(schedule =>
@@ -77,15 +81,39 @@ export default function CalendarPage() {
         })
       );
 
-      await Promise.all(promises);
+      const results = await Promise.all(promises);
+
+      // Check if all succeeded
+      const allSuccess = results.every(r => r.ok);
+
+      if (allSuccess) {
+        setToast({
+          message: `✨ Successfully imported ${schedules.length} schedules!`,
+          type: 'success',
+        });
+      } else {
+        const successCount = results.filter(r => r.ok).length;
+        setToast({
+          message: `⚠️ Imported ${successCount}/${schedules.length} schedules`,
+          type: 'error',
+        });
+      }
+
       await fetchSchedules();
       setShowBulkImport(false);
     } catch (error) {
       console.error('Failed to bulk import:', error);
+      setToast({
+        message: '❌ Failed to import schedules. Please try again.',
+        type: 'error',
+      });
+    } finally {
+      setImporting(false);
     }
   };
 
   const handleApplyTemplate = async (schedules: any[]) => {
+    setImporting(true);
     try {
       const promises = schedules.map(schedule =>
         fetch('/api/schedules', {
@@ -98,11 +126,32 @@ export default function CalendarPage() {
         })
       );
 
-      await Promise.all(promises);
+      const results = await Promise.all(promises);
+      const allSuccess = results.every(r => r.ok);
+
+      if (allSuccess) {
+        setToast({
+          message: `🎉 Template applied! ${schedules.length} schedules created.`,
+          type: 'success',
+        });
+      } else {
+        const successCount = results.filter(r => r.ok).length;
+        setToast({
+          message: `⚠️ Applied ${successCount}/${schedules.length} schedules`,
+          type: 'error',
+        });
+      }
+
       await fetchSchedules();
       setShowTemplates(false);
     } catch (error) {
       console.error('Failed to apply template:', error);
+      setToast({
+        message: '❌ Failed to apply template. Please try again.',
+        type: 'error',
+      });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -160,6 +209,25 @@ export default function CalendarPage() {
         onClose={() => setShowTemplates(false)}
         onApplyTemplate={handleApplyTemplate}
       />
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
+      {/* Loading Overlay */}
+      {importing && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[90]">
+          <div className="bg-white rounded-lg p-6 flex flex-col items-center space-y-4">
+            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-700 font-medium">Importing schedules...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
