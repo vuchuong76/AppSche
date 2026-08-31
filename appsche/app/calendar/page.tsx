@@ -106,8 +106,8 @@ export default function CalendarPage() {
             ...getAuthHeader(),
           } as HeadersInit,
           body: JSON.stringify(schedule),
-        })
-      );
+        });
+      });
 
       const results = await Promise.all(promises);
       console.log('📥 Import results:', results.map(r => ({ status: r.status, ok: r.ok })));
