@@ -6,8 +6,9 @@ import Navigation from '@/components/Navigation';
 import Dashboard from '@/components/Dashboard';
 import ScheduleModal from '@/components/ScheduleModal';
 import TaskModal from '@/components/TaskModal';
+import Toast from '@/components/Toast';
 import { Schedule, Task } from '@/types';
-import { getTodayString } from '@/lib/utils';
+import { getTodayString, addDaysToDateString } from '@/lib/utils';
 import { getAuthHeader, isAuthenticated } from '@/lib/auth';
 
 export default function DashboardPage() {
@@ -17,19 +18,20 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(getTodayString());
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Fetch today's schedules
-  const fetchSchedules = async () => {
+  // Fetch schedules for the selected date
+  const fetchSchedules = async (date: string = selectedDate) => {
     try {
-      const today = getTodayString();
-      console.log('📅 [Dashboard] Fetching schedules for today:', today);
-      const response = await fetch(`/api/schedules?date=${today}`, {
+      console.log('📅 [Dashboard] Fetching schedules for date:', date);
+      const response = await fetch(`/api/schedules?date=${date}`, {
         headers: getAuthHeader() as HeadersInit,
       });
       const data = await response.json();
       console.log('📊 [Dashboard] API response:', data);
       if (data.success) {
-        console.log(`✅ [Dashboard] Loaded ${data.data.length} schedules for ${today}`);
+        console.log(`✅ [Dashboard] Loaded ${data.data.length} schedules for ${date}`);
         setSchedules(data.data);
       } else {
         console.error('❌ [Dashboard] Fetch failed:', data);
@@ -63,11 +65,23 @@ export default function DashboardPage() {
     }
 
     const loadData = async () => {
-      await Promise.all([fetchSchedules(), fetchTasks()]);
+      await Promise.all([fetchSchedules(getTodayString()), fetchTasks()]);
       setLoading(false);
     };
     loadData();
   }, [router]);
+
+  // Refetch schedules whenever the selected date changes
+  useEffect(() => {
+    if (!loading) {
+      fetchSchedules(selectedDate);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
+
+  const goToPrevDay = () => setSelectedDate((d) => addDaysToDateString(d, -1));
+  const goToNextDay = () => setSelectedDate((d) => addDaysToDateString(d, 1));
+  const goToToday = () => setSelectedDate(getTodayString());
 
   const handleAddSchedule = async (schedule: any) => {
     try {
@@ -81,11 +95,39 @@ export default function DashboardPage() {
       });
       const data = await response.json();
       if (data.success) {
-        await fetchSchedules();
+        await fetchSchedules(selectedDate);
         setShowScheduleModal(false);
       }
     } catch (error) {
       console.error('Failed to add schedule:', error);
+    }
+  };
+
+  const handleConvertToTask = async (schedule: Schedule) => {
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeader(),
+        } as HeadersInit,
+        body: JSON.stringify({
+          title: schedule.title,
+          priority: 'MEDIUM',
+          category: schedule.category,
+          deadline: schedule.date,
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchTasks();
+        setToast({ message: `Added "${schedule.title}" to tasks`, type: 'success' });
+      } else {
+        setToast({ message: 'Failed to add task', type: 'error' });
+      }
+    } catch (error) {
+      console.error('Failed to convert schedule to task:', error);
+      setToast({ message: 'Failed to add task', type: 'error' });
     }
   };
 
@@ -127,14 +169,27 @@ export default function DashboardPage() {
         <Dashboard
           schedules={schedules}
           tasks={tasks}
+          selectedDate={selectedDate}
           onAddSchedule={() => setShowScheduleModal(true)}
           onAddTask={() => setShowTaskModal(true)}
+          onPrevDay={goToPrevDay}
+          onNextDay={goToNextDay}
+          onToday={goToToday}
+          onConvertToTask={handleConvertToTask}
         />
       </main>
 
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
       <ScheduleModal
         isOpen={showScheduleModal}
-        initialDate={getTodayString()}
+        initialDate={selectedDate}
         onClose={() => setShowScheduleModal(false)}
         onSubmit={handleAddSchedule}
       />

@@ -1,37 +1,73 @@
 'use client';
 
 import { Schedule, Task } from '@/types';
-import { formatTime } from '@/lib/utils';
+import { formatTime, getTodayString } from '@/lib/utils';
 
 interface DashboardProps {
   schedules: Schedule[];
   tasks: Task[];
+  selectedDate: string;
   onAddSchedule: () => void;
   onAddTask: () => void;
+  onPrevDay: () => void;
+  onNextDay: () => void;
+  onToday: () => void;
+  onConvertToTask: (schedule: Schedule) => void;
 }
 
 export default function Dashboard({
   schedules,
   tasks,
+  selectedDate,
   onAddSchedule,
   onAddTask,
+  onPrevDay,
+  onNextDay,
+  onToday,
+  onConvertToTask,
 }: DashboardProps) {
   const completedTasks = tasks.filter((t) => t.status === 'COMPLETED').length;
   const pendingTasks = tasks.filter((t) => t.status === 'TODO').length;
+  const isToday = selectedDate === getTodayString();
+  // Parse as local date to avoid UTC off-by-one on YYYY-MM-DD strings
+  const [selYear, selMonth, selDay] = selectedDate.split('-').map(Number);
+  const selectedDateLabel = new Date(selYear, selMonth - 1, selDay).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-1">
-            {new Date().toLocaleDateString('en-US', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </p>
+          <div className="flex items-center space-x-2 mt-1">
+            <button
+              onClick={onPrevDay}
+              aria-label="Previous day"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-200 transition-colors"
+            >
+              ‹
+            </button>
+            <p className="text-gray-600 min-w-[220px]">{selectedDateLabel}</p>
+            <button
+              onClick={onNextDay}
+              aria-label="Next day"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-200 transition-colors"
+            >
+              ›
+            </button>
+            {!isToday && (
+              <button
+                onClick={onToday}
+                className="ml-2 px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+              >
+                Today
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex space-x-3">
           <button
@@ -53,7 +89,7 @@ export default function Dashboard({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-sm font-medium text-gray-600 mb-2">
-            Today's Schedules
+            {isToday ? "Today's Schedules" : 'Schedules'}
           </h3>
           <p className="text-3xl font-bold text-blue-600">{schedules.length}</p>
         </div>
@@ -71,15 +107,17 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* Today's Schedule */}
+      {/* Schedule for selected date */}
       <div className="bg-white rounded-lg shadow">
         <div className="p-6 border-b border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900">Today's Schedule</h2>
+          <h2 className="text-xl font-bold text-gray-900">
+            {isToday ? "Today's Schedule" : `Schedule — ${selectedDateLabel}`}
+          </h2>
         </div>
         <div className="p-6">
           {schedules.length === 0 ? (
             <p className="text-gray-500 text-center py-8">
-              No schedules for today
+              No schedules for {isToday ? 'today' : 'this day'}
             </p>
           ) : (
             <div className="space-y-3">
@@ -98,9 +136,16 @@ export default function Dashboard({
                       {formatTime(schedule.endTime)}
                     </p>
                   </div>
-                  <span className="px-3 py-1 bg-white text-sm text-gray-700 rounded-full">
+                  <span className="px-3 py-1 bg-white text-sm text-gray-700 rounded-full mr-3">
                     {schedule.category}
                   </span>
+                  <button
+                    onClick={() => onConvertToTask(schedule)}
+                    title="Add to Tasks"
+                    className="px-3 py-1 text-sm bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors"
+                  >
+                    + Task
+                  </button>
                 </div>
               ))}
             </div>
