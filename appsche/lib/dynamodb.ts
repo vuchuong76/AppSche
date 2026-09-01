@@ -85,12 +85,16 @@ export async function addSchedule(
   const dateTime = createDateTimeKey(schedule.date, schedule.startTime);
   const color = getCategoryColor(schedule.category);
 
+  // TTL: auto-expire after 30 days (in seconds, not milliseconds)
+  const ttl = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
+
   const newSchedule: Schedule = {
     userId,
     dateTime,
     ...schedule,
     color,
     createdAt: Date.now(),
+    ttl,
   };
 
   console.log('📝 [DynamoDB] Attempting to save schedule:', {
@@ -98,6 +102,7 @@ export async function addSchedule(
     userId,
     dateTime,
     title: newSchedule.title,
+    ttl: new Date(ttl * 1000).toISOString(),
   });
 
   const command = new PutCommand({
@@ -194,12 +199,16 @@ export async function addTask(
 ): Promise<Task> {
   const taskId = uuidv4();
 
+  // TTL: auto-expire after 30 days (in seconds, not milliseconds)
+  const ttl = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
+
   const newTask: Task = {
     userId,
     taskId,
     ...task,
     status: 'TODO',
     createdAt: Date.now(),
+    ttl,
   };
 
   const command = new PutCommand({

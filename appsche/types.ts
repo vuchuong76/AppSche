@@ -9,6 +9,7 @@ export interface Schedule {
   color: string; // hex color
   createdAt: number; // timestamp
   updatedAt?: number;
+  ttl: number; // DynamoDB TTL (Unix timestamp in seconds)
 }
 
 export interface Task {
@@ -21,6 +22,7 @@ export interface Task {
   deadline?: string; // YYYY-MM-DD
   createdAt: number;
   updatedAt?: number;
+  ttl: number; // DynamoDB TTL (Unix timestamp in seconds)
 }
 
 export interface User {
